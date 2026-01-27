@@ -1,198 +1,263 @@
-# PARE: Part Attention Regressor for 3D Human Body Estimation [ICCV 2021]
+# PARE: Video to 3D Human Motion (PKL)
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)]()
-[![report](https://img.shields.io/badge/Project-Page-blue)](https://pare.is.tue.mpg.de/)
-[![report](https://img.shields.io/badge/ArXiv-Paper-red)](https://arxiv.org/abs/2104.08527)
+Convert monocular video into 3D human motion PKL files using **PARE** (Part Attention Regressor) with optional motion smoothing via **SmoothNet**. This repository is set up for **inference and analysis**—not for training from scratch.
 
-> [**PARE: Part Attention Regressor for 3D Human Body Estimation**](https://arxiv.org/abs/2104.08527),            
-> [Muhammed Kocabas](https://ps.is.tuebingen.mpg.de/person/mkocabas), 
-> [Chun-Hao Paul Huang](https://ps.is.tuebingen.mpg.de/person/chuang2),
-> [Otmar Hilliges](https://ait.ethz.ch/people/hilliges/)
-[Michael J. Black](https://ps.is.tuebingen.mpg.de/person/black),        
-> *International Conference on Computer Vision (ICCV), 2021*
+---
 
-<p float="left">
-  <img src="docs/assets/vibe_vs_pare_p1.gif" width="49%" />
-  <img src="docs/assets/vibe_vs_pare_p2.gif" width="49%" />
+## 1. Project Overview
 
-</p>
+### What does this repo do?
 
-## Features
+The pipeline takes a **video** (e.g. `dance.mp4`) and produces a **PKL file** that contains 3D human pose and shape over time in SMPL format.
 
-PARE is an occlusion-robust human pose and shape estimation method. This implementation includes the demo and evaluation code for 
-PARE implemented in PyTorch.
+**“Video → PKL”** means:
 
-## Updates
+- **Input:** A video file (MP4, etc.) with visible people.
+- **Output:** A Python pickle/joblib file (`.pkl`) with, per person and per frame:
+  - SMPL pose (axis-angle, 72D) and global orientation
+  - Root translation (3D)
+  - 3D joint positions, shape parameters, and frame indices
 
-- 13/10/2021: Demo and evaluation code is released.
+That PKL can then be used for motion analysis, retargeting to character rigs (e.g. in Maya), or as input to other research/creative tools.
 
-## Getting Started
+### Typical use cases
 
-PARE has been implemented and tested on Ubuntu 18.04 with 
-python >= 3.7. If you don't have a suitable device, 
-try running our Colab demo.
+- **Motion analysis** — Extract 3D pose from video for biomechanics or movement studies.
+- **Animation** — Feed motion into DCC tools (e.g. Maya) for retargeting or editing.
+- **Research** — Use as a preprocessing step for action recognition, re-enactment, or similar.
+- **Validation** — Check that generated motion is smooth and suitable for downstream use (via built-in validators).
 
-Clone the repo:
+---
 
-```shell
-git clone https://github.com/mkocabas/PARE.git
+## 2. Features
+
+- **PARE-based 3D pose estimation** — Predicts SMPL body parameters and 3D joints from video using the PARE model (ICCV 2021).
+- **Video-to-PKL inference** — Single entry point: video in, SMPL PKL out (multi-person supported via tracking).
+- **Motion validation and diagnostics** — Validate PKL structure and motion quality (jitter, angular velocity, root stability).
+- **Motion smoothing with SmoothNet** — Optional temporal smoothing of 3D joints to reduce jitter; SmoothNet is **vendored** in this repo (not a git submodule).
+
+---
+
+## 3. Repository Structure
+
+| Path | Purpose |
+|------|---------|
+| **`pare/`** | PARE model, backbones, and inference utilities. Core pose estimation lives here. |
+| **`smoothnet/`** | SmoothNet code and configs, vendored in-repo. Used for temporal smoothing of 3D joints. |
+| **`scripts/`** | Install scripts (`install_conda.sh`, `install_pip.sh`), data prep (`prepare_data.sh`), and other helpers (demo, eval, occlusion analysis). |
+| **`data/`** | Created by `prepare_data.sh`. Holds PARE checkpoints, SMPL model, and other assets (see Checkpoints). |
+| **`docs/`** | Assets (e.g. GIFs) and documentation. |
+
+### Main scripts (root directory)
+
+| Script | Role |
+|--------|------|
+| **`infer.py`** | Main inference script: video → SMPL PKL. Supports `--enable_smoothnet` and related options. |
+| **`run_inference.sh`** | Wrapper that sets up the environment and runs inference + validation + optional SmoothNet/motion stabilizer. Easiest way to run “video → PKL.” |
+| **`validate_pkl.py`** | Validates PKL *structure* (shapes, keys, no NaNs). |
+| **`validate_pkl_motion.py`** | Validates that root motion exists and is non-trivial (basic “does this PKL have motion?” check). |
+| **`pkl_motion_validator.py`** | Motion *quality* checks: angular velocity, root jitter, bad-frame ratio. Reports PASS / PASS_WITH_CLEANUP / FAIL. |
+| **`motion_stabilizer.py`** | Post-processing stabilizer: quaternion smoothing, outlier replacement, root smoothing. Used after SmoothNet in the pipeline. |
+| **`analyze_motion_type.py`** | Analyzes whether motion is progressing, looping, or oscillating (useful for diagnostics). |
+| **`diagnose_pkl.py`** | PKL diagnostics (contents, shapes, basic stats). |
+
+---
+
+## 4. Installation
+
+### Python
+
+- **Recommended:** Python **3.7–3.9** (tested with conda on Ubuntu).
+
+### Environment (conda, recommended)
+
+```bash
+# Create and activate env
+conda create -n PARE python=3.8 -y
+conda activate PARE
 ```
 
-Install the requirements using virtualenv or conda:
+Or use the project scripts:
 
-```shell
-# pip
-source scripts/install_pip.sh
-
-# conda
+```bash
+# Conda-based install
 source scripts/install_conda.sh
+
+# Or pip/venv
+source scripts/install_pip.sh
 ```
 
-## Demo
+### Dependencies
 
-First, you need to download the required data 
-(i.e our trained model and SMPL model parameters). It is approximately 1.3GB. 
-To do this you can just run:
+For **inference only** (video → PKL):
 
-```shell
-source scripts/prepare_data.sh
+```bash
+pip install -r requirements_inference.txt
 ```
 
-### Video Demo
-Run the command below. See `scripts/demo.py` for more options.
-```shell script
-python scripts/demo.py --vid_file data/sample_video.mp4 --output_folder logs/demo 
+For the full repo (e.g. demos, evaluation, training-related code):
+
+```bash
+pip install -r requirements.txt
 ```
 
-Sample demo output:
+### External tools
 
-<p float="left">
-  <img src="docs/assets/demo_output.gif" width="30%" />
-</p>
+- **ffmpeg** — Used to decode video and extract frames. Install system-wide (e.g. `apt install ffmpeg` on Ubuntu).
+- **CUDA** (optional) — Speed up inference. CPU works but is slower.
 
-### Image Folder Demo
+---
 
-```shell script
-python scripts/demo.py --image_folder <path to image folder> --output_folder logs/demo
+## 5. Checkpoints
+
+**Checkpoints** are pre-trained model weights. The pipeline uses two kinds:
+
+1. **PARE checkpoints** — For 3D pose/shape from images.  
+   - Download and unpack via: `source scripts/prepare_data.sh` (downloads ~1.3 GB from Google Drive, creates `data/`).  
+   - After that, PARE assets live under **`data/pare/checkpoints/`** (e.g. `pare_checkpoint.ckpt`, `pare_config.yaml`).  
+   - Total size is on the order of **~1–2 GB** (PARE + SMPL + YOLO, etc.).
+
+2. **SmoothNet checkpoints** — For temporal smoothing of 3D joints.  
+   - **Not** included in the repo by default.  
+   - Download from the [SmoothNet drive](https://drive.google.com/drive/folders/19Cu-_gqylFZAOTmHXzK52C80DKb0Tfx_?usp=sharing) (see `smoothnet/DOWNLOAD_CHECKPOINTS.md`).  
+   - Place them under **`smoothnet/data/checkpoints/pw3d_spin_3D/`**, e.g.:
+     - `checkpoint_8.pth.tar`
+     - or `checkpoint_32.pth.tar` (adjust `--smoothnet_checkpoint` if you use a different file).
+
+If you skip SmoothNet checkpoints, you can still run inference without `--enable_smoothnet`; only the smoothing step will be disabled.
+
+---
+
+## 6. Running Inference
+
+### Quick run (recommended)
+
+Use the shell script so that environment, paths, and optional SmoothNet are handled for you:
+
+```bash
+./run_inference.sh inputs/your_video.mp4
 ```
 
-#### Output format
+You can pass the video path as the first argument or let the script prompt you.
 
-If demo finishes succesfully, it needs to create a file named `pare_output.pkl` in the `--output_folder`.
-We can inspect what this file contains by:
+### What the script does
 
-```
->>> import joblib # you may also use native pickle here as well
+1. Activates the conda env (e.g. `PARE`).
+2. Runs **PARE inference** (`infer.py`) on the video.
+3. Optionally runs **SmoothNet** and **motion stabilizer** (if enabled and checkpoints are present).
+4. Validates the PKL and motion quality.
+5. Writes outputs under **`outputs/<video_basename>_<timestamp>/`** and copies the final PKL to **`output-pkl-files/<video_basename>.pkl`**.
 
->>> output = joblib.load('pare_output.pkl') 
+### Direct use of `infer.py`
 
->>> print(output.keys())  
-                                                                                                                                                                                                                                                                                                                                                                                              
-dict_keys([1, 2, 3, 4]) # these are the track ids for each subject appearing in the video
-
->>> for k,v in output[1].items(): print(k,v.shape) 
-
-pred_cam (n_frames, 3)          # weak perspective camera parameters in cropped image space (s,tx,ty)
-orig_cam (n_frames, 4)          # weak perspective camera parameters in original image space (sx,sy,tx,ty)
-verts (n_frames, 6890, 3)       # SMPL mesh vertices
-pose (n_frames, 72)             # SMPL pose parameters
-betas (n_frames, 10)            # SMPL body shape parameters
-joints3d (n_frames, 49, 3)      # SMPL 3D joints
-joints2d (n_frames, 21, 3)      # 2D keypoint detections by STAF if pose tracking enabled otherwise None
-bboxes (n_frames, 4)            # bbox detections (cx,cy,w,h)
-frame_ids (n_frames,)           # frame ids in which subject with tracking id #1 appears
-smpl_joints2d (n_frames, 49, 2) # SMPL 2D joints 
-```
-## Google Colab
-
-## Training
-
-Training instructions will follow soon.
-
-## Evaluation
-You need to download [3DPW](https://virtualhumans.mpi-inf.mpg.de/3DPW/) 
-and [3DOH](https://www.yangangwang.com/papers/ZHANG-OOH-2020-03.html) 
-datasets before running the evaluation script. 
-After the download, the `data` folder should look like:
-
-```shell
-data/
-├── body_models
-│   └── smpl
-├── dataset_extras
-├── dataset_folders
-│   ├── 3doh
-│   └── 3dpw
-└── pare
-    └── checkpoints
-
+```bash
+python infer.py \
+  --video inputs/your_video.mp4 \
+  --out outputs/my_run \
+  --enable_smoothnet \
+  --smoothnet_checkpoint smoothnet/data/checkpoints/pw3d_spin_3D/checkpoint_8.pth.tar \
+  --smoothnet_window_size 8
 ```
 
-Then, you can evaluate PARE by running:
+- **Input:** `--video` = path to a single video file.
+- **Output:** under `--out` you get (among others) `smpl_output.pkl` containing SMPL poses, root translation, joints, etc., keyed by person ID.
 
-```shell script
-python scripts/eval.py \
-  --cfg data/pare/checkpoints/pare_config.yaml \
-  --opts DATASET.VAL_DS 3doh_3dpw-all
-  
-python scripts/eval.py \
-  --cfg data/pare/checkpoints/pare_w_3dpw_config.yaml \
-  --opts DATASET.VAL_DS 3doh_3dpw-all
+### Inputs and outputs
+
+- **Inputs:**  
+  - Video path.  
+  - Optionally SmoothNet checkpoint path and window size.
+
+- **Outputs:**  
+  - **`<out>/smpl_output.pkl`** — SMPL parameters and 3D joints per person and per frame.  
+  - **`output-pkl-files/<video_basename>.pkl`** — Copy of the final PKL for easy reuse.  
+  - **`<out>/motion_validation.json`** — Motion quality report (if validation is run).  
+  - **`<out>/bad_frames.csv`** — Frames flagged as problematic by the motion validator (if generated).
+
+---
+
+## 7. Motion Validation & Analysis
+
+### Validating a PKL
+
+**Structure check** (required keys, shapes, no NaNs):
+
+```bash
+python validate_pkl.py --pkl path/to/smpl_output.pkl
 ```
 
-You should obtain results in this table on 3DPW test set:
+**Basic motion check** (root translation has meaningful motion):
 
-| | MPJPE | PAMPJPE | V2V|
-|--- | --- | --- | ---|
-|PARE | 82 | 50.9 | 97.9|
-|PARE (w. 3DPW) | 74.5 | 46.5 | 88.6|
-
-## Occlusion Sensitivity Analysis
-
-We prepare a script to run occlusion sensitivity analysis
-proposed in our paper. Occlusion sensitivity analysis slides
-an occluding patch on the image and visualizes how human pose
-and shape estimation result affected.
-
-```shell
-python scripts/occlusion_analysis.py \
-  --cfg data/pare/checkpoints/pare_config.yaml \
-  --ckpt data/pare/checkpoints/pare_checkpoint.ckpt
+```bash
+python validate_pkl_motion.py path/to/smpl_output.pkl
 ```
 
-Sample occlusion test output:
+**Motion quality** (jitter, angular velocity, bad-frame ratio, PASS/PASS_WITH_CLEANUP/FAIL):
 
-<p float="left">
-  <img src="docs/assets/occlusion_test.gif" width="70%" />
-</p>
-
-## Citation
-
-```bibtex
-@inproceedings{Kocabas_PARE_2021,
-  title = {{PARE}: Part Attention Regressor for {3D} Human Body Estimation},
-  author = {Kocabas, Muhammed and Huang, Chun-Hao P. and Hilliges, Otmar and Black, Michael J.},
-  booktitle = {Proc. International Conference on Computer Vision (ICCV)},
-  pages = {11127--11137},
-  month = oct,
-  year = {2021},
-  doi = {},
-  month_numeric = {10}
-}
+```bash
+python pkl_motion_validator.py --pkl path/to/smpl_output.pkl --fps 30 --output report.json --csv bad_frames.csv
 ```
-## License
 
-This code is available for **non-commercial scientific research purposes** as defined in the [LICENSE file](LICENSE). By downloading and using this code you agree to the terms in the [LICENSE](LICENSE). Third-party datasets and software are subject to their respective licenses.
+- Uses thresholds for angular velocity and root displacement.  
+- Writes a JSON report and an optional CSV of bad frame indices.  
+- See **`PKL_MOTION_VALIDATOR_README.md`** for thresholds and interpretation.
 
-## References
+### Understanding the validators
 
-We indicate if a function or script is borrowed externally inside each file. Consider citing these works if you use them in your project.
+- **`validate_pkl.py`** — Sanity check that the PKL is loadable and has expected structure.  
+- **`validate_pkl_motion.py`** — Ensures the PKL is “dynamic” enough for use (e.g. root not constant). Run: `python validate_pkl_motion.py <pkl_path>`.  
+- **`pkl_motion_validator.py`** — Production-oriented quality: “Is this motion smooth enough for rigging/retargeting?”
 
-## Contact
+---
 
-For questions, please contact pare@tue.mpg.de
+## 8. Motion Smoothing (SmoothNet)
 
-For commercial licensing (and all related questions for business applications), please contact ps-licensing@tue.mpg.de.
+### What SmoothNet does
 
+SmoothNet is a small temporal network that smooths sequences of 3D joint positions in time. It reduces high-frequency jitter and implausible spikes while keeping the overall motion. In this repo it runs on the **joints** produced by PARE; pose/translations are then refined for consistency.
 
-# video2pkl
+### How it fits in the pipeline
+
+When you use **`run_inference.sh`** or **`infer.py --enable_smoothnet`**:
+
+1. PARE predicts poses and 3D joints per frame.
+2. SmoothNet smooths the 3D joints (configurable window, e.g. 8 or 32).
+3. Root translation and poses are filtered/updated to match the smoothed joints.
+4. Optionally **`motion_stabilizer.py`** runs (outlier replacement, quaternion smoothing, root clamping).
+
+SmoothNet is **optional**. If you do not download its checkpoints or do not pass `--enable_smoothnet`, inference still runs; only the SmoothNet and stabilizer steps are skipped or no-ops.
+
+### Usage
+
+- **Via script:** `./run_inference.sh inputs/video.mp4` (SmoothNet is enabled by default in the script if the checkpoint exists).
+- **Via `infer.py`:**  
+  - `--enable_smoothnet`  
+  - `--smoothnet_checkpoint smoothnet/data/checkpoints/pw3d_spin_3D/checkpoint_8.pth.tar`  
+  - `--smoothnet_window_size 8` (must match the checkpoint, e.g. 8 for `checkpoint_8.pth.tar`).
+
+See **`smoothnet/DOWNLOAD_CHECKPOINTS.md`** and **`SMOOTHNET_FIXES.md`** for checkpoint paths and known fixes.
+
+---
+
+## 9. Notes & Limitations
+
+- **GPU** — Strongly recommended for PARE inference. CPU is supported but slow.
+- **Inference only** — This fork is aimed at **inference and analysis**. Training scripts may exist under `scripts/` but are not the main focus; training from scratch is not documented here.
+- **Failure cases** — Performance can degrade with:
+  - Heavy occlusions.
+  - Very fast motion or motion blur.
+  - Multiple people with similar appearance (tracking can mix identities).
+  - Unusual poses or camera angles.
+- **SmoothNet** — Checkpoint **window size** (e.g. 8 vs 32) is fixed by the model; use the value that matches the file (e.g. `checkpoint_8.pth.tar` → window 8).
+
+---
+
+## 10. License & Credits
+
+- **PARE** — [PARE: Part Attention Regressor for 3D Human Body Estimation (ICCV 2021)](https://arxiv.org/abs/2104.08527).  
+  Kocabas et al.  
+  Code and idea from the [original PARE repository](https://github.com/mkocabas/PARE).
+
+- **SmoothNet** — SmoothNet temporal smoothing is from [cure-lab/SmoothNet](https://github.com/cure-lab/SmoothNet). It is **vendored** in this repo (under `smoothnet/`) for inference only.
+
+This repository builds on that prior work to provide a **video → PKL** inference pipeline with validation and smoothing. For license terms, see the **LICENSE** file in this repo and any licenses under `pare/` and `smoothnet/`.

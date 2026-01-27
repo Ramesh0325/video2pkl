@@ -1,0 +1,13 @@
+.idea/
+logs/
+data
+images/
+__pycache__/
+vibe-env/
+output/
+outputs/
+*.mp4
+results
+*.pkl
+tmp_frames/
+inputs/

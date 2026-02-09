@@ -1,0 +1,60 @@
+# Inference Docker build: exclude everything not needed for image.
+# Data/weights are fetched during build; do not copy from host.
+
+# Version control and IDE
+.git
+.gitignore
+.idea
+*.swp
+*.swo
+.cursor
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info
+.eggs
+*.egg
+pare-env
+vibe-env
+.env
+.venv
+venv
+*.egg-info
+
+# Data and outputs (built or mounted at run; never copy into image)
+data
+outputs
+output
+output-pkl-files
+inputs
+images
+logs
+results
+tmp_frames
+checkpoints
+
+# Large or media files
+*.mp4
+*.avi
+*.mov
+*.pkl
+*.zip
+*.ckpt
+*.pth
+*.pth.tar
+*.tar
+*.weights
+
+# Documentation not required inside container (optional: remove to bake in)
+# docs/
+# *.md
+
+# Test and dev
+.pytest_cache
+.coverage
+htmlcov
+*.log
